@@ -2,6 +2,7 @@ import random
 import pickle
 import os
 from cryptography.fernet import Fernet
+import matplotlib.pyplot as plt
 
 # Genera una chiave segreta per la crittografia
 def generate_key():
@@ -86,9 +87,19 @@ class Stock:
     def __str__(self):
         return f"{self.symbol}: ${self.price:.2f} (Disponibile: {self.quantity} azioni)"
 
+class Item:
+    def __init__(self, name, price, quantity):
+        self.name = name
+        self.price = price
+        self.quantity = quantity
+
+    def __str__(self):
+        return f"{self.name}: ${self.price:.2f} (Disponibile: {self.quantity} oggetti)"
+
 class Portfolio:
     def __init__(self):
         self.stocks = {}
+        self.items = {}
         self.balance = 10000
         self.transaction_fee = 10.0  # Commissione fissa per transazione
 
@@ -123,18 +134,55 @@ class Portfolio:
             print(f"Venduti {quantity} di {stock.symbol}. Commissione applicata: ${self.transaction_fee:.2f}.")
             return True
 
+    def buy_item(self, item, quantity):
+        cost = item.price * quantity
+        total_cost = cost + self.transaction_fee
+        if total_cost > self.balance:
+            print("Saldo insufficiente per acquistare l'oggetto.")
+            return False
+        if quantity > item.quantity:
+            print(f"Non ci sono abbastanza oggetti disponibili per {item.name}.")
+            return False
+        else:
+            if item.name in self.items:
+                self.items[item.name] += quantity
+            else:
+                self.items[item.name] = quantity
+            item.quantity -= quantity
+            self.balance -= total_cost
+            print(f"Acquistati {quantity} di {item.name}. Commissione applicata: ${self.transaction_fee:.2f}.")
+            return True
+
+    def sell_item(self, item, quantity):
+        if item.name not in self.items or self.items[item.name] < quantity:
+            print("Non hai abbastanza oggetti per vendere.")
+            return False
+        else:
+            self.items[item.name] -= quantity
+            earnings = item.price * quantity - self.transaction_fee
+            self.balance += earnings
+            item.quantity += quantity
+            print(f"Venduti {quantity} di {item.name}. Commissione applicata: ${self.transaction_fee:.2f}.")
+            return True
+
     def get_portfolio_value(self, market):
         total_value = self.balance
         for symbol, quantity in self.stocks.items():
             stock = market.get_stock(symbol)
             if stock:
                 total_value += stock.price * quantity
+        for name, quantity in self.items.items():
+            item = market.get_item(name)
+            if item:
+                total_value += item.price * quantity
         return total_value
 
     def __str__(self):
         portfolio_str = "Portafoglio:\n"
         for symbol, quantity in self.stocks.items():
             portfolio_str += f"{symbol}: {quantity} azioni\n"
+        for name, quantity in self.items.items():
+            portfolio_str += f"{name}: {quantity} oggetti\n"
         portfolio_str += f"Saldo disponibile: ${self.balance:.2f}\n"
         portfolio_str += f"Commissione per transazione: ${self.transaction_fee:.2f}"
         return portfolio_str
@@ -142,6 +190,7 @@ class Portfolio:
 class Market:
     def __init__(self):
         self.stocks = {}
+        self.items = {}
 
     def add_stock(self, symbol, price, quantity):
         if symbol in self.stocks:
@@ -153,6 +202,16 @@ class Market:
     def get_stock(self, symbol):
         return self.stocks.get(symbol, None)
 
+    def add_item(self, name, price, quantity):
+        if name in self.items:
+            print("Oggetto già esistente nel mercato.")
+        else:
+            self.items[name] = Item(name, price, quantity)
+            print(f"Oggetto {name} aggiunto al mercato con {quantity} oggetti disponibili.")
+
+    def get_item(self, name):
+        return self.items.get(name, None)
+
     def update_market(self):
         for stock in self.stocks.values():
             stock.update_price()
@@ -161,20 +220,24 @@ class Market:
         market_str = "Mercato:\n"
         for stock in self.stocks.values():
             market_str += str(stock) + "\n"
+        for item in self.items.values():
+            market_str += str(item) + "\n"
         return market_str
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Convert Stock objects to a serializable format
+        # Convert Stock and Item objects to a serializable format
         state['stocks'] = {symbol: (stock.symbol, stock.price, stock.quantity, stock.history) for symbol, stock in self.stocks.items()}
+        state['items'] = {name: (item.name, item.price, item.quantity) for name, item in self.items.items()}
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        # Convert the serializable format back to Stock objects
+        # Convert the serializable format back to Stock and Item objects
         self.stocks = {symbol: Stock(symbol, price, quantity) for symbol, (symbol, price, quantity, history) in self.stocks.items()}
         for stock in self.stocks.values():
-            stock.history = history
+            stock.history = state['stocks'][stock.symbol][3]
+        self.items = {name: Item(name, price, quantity) for name, (name, price, quantity) in self.items.items()}
 
 class User:
     def __init__(self, username, password):
@@ -206,6 +269,15 @@ class UserManager:
 def display_market(market):
     print("\n--- Mercato ---")
     print(market)
+
+def plot_stock_history(stock):
+    plt.figure(figsize=(10, 5))
+    plt.plot(stock.history, marker='o', linestyle='-', color='b')
+    plt.title(f'Andamento del prezzo per {stock.symbol}')
+    plt.xlabel('Tempo')
+    plt.ylabel('Prezzo')
+    plt.grid(True)
+    plt.show()
 
 def main():
     global key
@@ -240,10 +312,14 @@ def main():
                     print("1. Visualizza portafoglio")
                     print("2. Acquista azioni")
                     print("3. Vendi azioni")
-                    print("4. Aggiungi azione al mercato")
-                    print("5. Aggiorna mercato")
-                    print("6. Mostra commissione di transazione")
-                    print("7. Logout")
+                    print("4. Acquista oggetti")
+                    print("5. Vendi oggetti")
+                    print("6. Aggiungi azione al mercato")
+                    print("7. Aggiungi oggetto al mercato")
+                    print("8. Aggiorna mercato")
+                    print("9. Mostra commissione di transazione")
+                    print("10. Visualizza grafico prezzo azioni")
+                    print("11. Logout")
                     user_choice = input("Scegli un'opzione: ")
 
                     if user_choice == '1':
@@ -275,22 +351,59 @@ def main():
                             print("Azione non trovata.")
 
                     elif user_choice == '4':
+                        name = input("Nome oggetto: ")
+                        quantity = int(input("Quantità: "))
+                        item = market.get_item(name)
+                        if item:
+                            if current_user.portfolio.buy_item(item, quantity):
+                                save_portfolio(current_user.username, current_user.portfolio, key)
+                                save_market(market, key)
+                        else:
+                            print("Oggetto non trovato.")
+
+                    elif user_choice == '5':
+                        name = input("Nome oggetto: ")
+                        quantity = int(input("Quantità: "))
+                        item = market.get_item(name)
+                        if item:
+                            if current_user.portfolio.sell_item(item, quantity):
+                                save_portfolio(current_user.username, current_user.portfolio, key)
+                                save_market(market, key)
+                        else:
+                            print("Oggetto non trovato.")
+
+                    elif user_choice == '6':
                         symbol = input("Simbolo azione: ")
                         price = float(input("Prezzo iniziale: "))
                         quantity = int(input("Quantità iniziale: "))
                         market.add_stock(symbol, price, quantity)
                         save_market(market, key)
 
-                    elif user_choice == '5':
+                    elif user_choice == '7':
+                        name = input("Nome oggetto: ")
+                        price = float(input("Prezzo iniziale: "))
+                        quantity = int(input("Quantità iniziale: "))
+                        market.add_item(name, price, quantity)
+                        save_market(market, key)
+
+                    elif user_choice == '8':
                         market.update_market()
                         print("\nMercato aggiornato:")
                         display_market(market)
                         save_market(market, key)
 
-                    elif user_choice == '6':
+                    elif user_choice == '9':
                         print(f"\nCommissione per transazione: ${current_user.portfolio.transaction_fee:.2f}")
 
-                    elif user_choice == '7':
+                    elif user_choice == '10':
+                        symbol = input("Simbolo azione: ")
+                        stock = market.get_stock(symbol)
+                        if stock:
+                            plot_stock_history(stock)
+                        else:
+                            print("Azione non trovata.")
+
+                    elif user_choice == '11':
                         break
 
                     else:
