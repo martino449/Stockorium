@@ -1,5 +1,4 @@
 # Stockorium
-Program Overview
 The program simulates a stock market with user accounts, portfolios, and trading capabilities. It also includes features such as encrypted data storage to protect user information and market data. Here's a breakdown of the main components and their functions:
 
 ### 1. Encryption and Data Persistence
